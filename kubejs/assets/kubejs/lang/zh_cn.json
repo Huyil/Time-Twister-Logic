@@ -1,0 +1,6 @@
+{
+    "item.kubejs.time_twister": "时间扭曲者",
+    "death.attack.abyssal_pull": "%s被深渊引力抽干了生命",
+    "death.attack.heat_exhaustion": "%s因酷热脱水而亡",
+    "death.attack.radiation": "%1$s 遭受的辐射达到致命剂量"
+}
