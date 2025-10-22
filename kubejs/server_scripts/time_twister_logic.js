@@ -116,149 +116,11 @@ function getEyePosituinWorkable(level, player) {
   return $GTCapabilityHelper.getWorkable(level, getEyePositionPos(level, player), null)
 }
 
-function getAllCapabilities(level, pos) {
-  var capabilities = {};
-  
-  // 只尝试我们知道可用的方法，其他的用 try-catch 包装
-  try { capabilities.recipeLogic = $GTCapabilityHelper.getRecipeLogic(level, pos, null); } catch (e) { capabilities.recipeLogic = null; }
-  try { capabilities.workable = $GTCapabilityHelper.getWorkable(level, pos, null); } catch (e) { capabilities.workable = null; }
-  
-  // 其他的方法可能不可用，但我们还是尝试一下
-  try { capabilities.energyContainer = $GTCapabilityHelper.getEnergyContainer(level, pos, null); } catch (e) { capabilities.energyContainer = null; }
-  try { capabilities.coverable = $GTCapabilityHelper.getCoverable(level, pos, null); } catch (e) { capabilities.coverable = null; }
-  try { capabilities.toolable = $GTCapabilityHelper.getToolable(level, pos, null); } catch (e) { capabilities.toolable = null; }
-  try { capabilities.controllable = $GTCapabilityHelper.getControllable(level, pos, null); } catch (e) { capabilities.controllable = null; }
-  try { capabilities.forgeEnergy = $GTCapabilityHelper.getForgeEnergy(level, pos, null); } catch (e) { capabilities.forgeEnergy = null; }
-  try { capabilities.cleanroomReceiver = $GTCapabilityHelper.getCleanroomReceiver(level, pos, null); } catch (e) { capabilities.cleanroomReceiver = null; }
-  try { capabilities.maintenanceMachine = $GTCapabilityHelper.getMaintenanceMachine(level, pos, null); } catch (e) { capabilities.maintenanceMachine = null; }
-  try { capabilities.laser = $GTCapabilityHelper.getLaser(level, pos, null); } catch (e) { capabilities.laser = null; }
-  
-  // 这些方法可能不存在，但我们还是尝试
-  try { capabilities.itemHandler = $GTCapabilityHelper.getItemHandler(level, pos, null); } catch (e) { capabilities.itemHandler = null; }
-  try { capabilities.fluidHandler = $GTCapabilityHelper.getFluidHandler(level, pos, null); } catch (e) { capabilities.fluidHandler = null; }
-  try { capabilities.energyInfoProvider = $GTCapabilityHelper.getEnergyInfoProvider(level, pos, null); } catch (e) { capabilities.energyInfoProvider = null; }
-  try { capabilities.opticalComputationProvider = $GTCapabilityHelper.getOpticalComputationProvider(level, pos, null); } catch (e) { capabilities.opticalComputationProvider = null; }
-  try { capabilities.dataAccess = $GTCapabilityHelper.getDataAccess(level, pos, null); } catch (e) { capabilities.dataAccess = null; }
-  try { capabilities.hazardContainer = $GTCapabilityHelper.getHazardContainer(level, pos, null); } catch (e) { capabilities.hazardContainer = null; }
-  try { capabilities.monitorComponent = $GTCapabilityHelper.getMonitorComponent(level, pos, null); } catch (e) { capabilities.monitorComponent = null; }
-  
-  return capabilities;
-}
-
-function areAllCapabilitiesNull(level, pos) {
-  var caps = getAllCapabilities(level, pos);
-  
-  // 检查所有能力是否都为null
-  for (var key in caps) {
-    if (caps[key] !== null) {
-      return false; // 至少有一个能力不为null
-    }
-  }
-  return true; // 所有能力都为null
-}
-
-function getMachineType(level, pos) {
-  var caps = getAllCapabilities(level, pos);
-  
-  // 检查各种容器组合
-  var hasItemContainer = caps.itemHandler !== null;
-  var hasFluidContainer = caps.fluidHandler !== null;
-  var hasEnergyContainer = caps.energyContainer !== null || caps.forgeEnergy !== null;
-  var hasRecipe = caps.recipeLogic !== null;
-  var hasWorkable = caps.workable !== null;
-  
-  // 判断机器类型
-  if (hasRecipe) {
-    if (hasItemContainer && hasFluidContainer && hasEnergyContainer) {
-      return "多功能加工机器（物品+流体+能量）";
-    } else if (hasItemContainer && hasEnergyContainer) {
-      return "物品加工机器";
-    } else if (hasFluidContainer && hasEnergyContainer) {
-      return "流体加工机器";
-    } else if (hasEnergyContainer) {
-      return "能量驱动机器";
-    } else {
-      return "有配方的机器";
-    }
-  } else if (hasWorkable) {
-    return "可工作的机器";
-  } else if (hasItemContainer && hasFluidContainer) {
-    return "物品流体存储容器";
-  } else if (hasItemContainer) {
-    return "物品存储容器";
-  } else if (hasFluidContainer) {
-    return "流体存储容器";
-  } else if (hasEnergyContainer) {
-    return "能量存储容器";
-  } else if (caps.coverable !== null) {
-    return "可安装覆盖板的方块";
-  } else {
-    // 检查是否有任何能力不为null
-    for (var key in caps) {
-      if (caps[key] !== null) {
-        return "特殊功能方块";
-      }
-    }
-    return "不是GT机器或没有能力接口";
-  }
-}
-
-function getContainerInfo(level, pos) {
-  var caps = getAllCapabilities(level, pos);
-  var containerTypes = [];
-  
-  if (caps.itemHandler !== null) containerTypes.push("物品容器");
-  if (caps.fluidHandler !== null) containerTypes.push("流体容器");
-  if (caps.energyContainer !== null) containerTypes.push("GT能量容器");
-  if (caps.forgeEnergy !== null) containerTypes.push("FE能量容器");
-  if (caps.laser !== null) containerTypes.push("激光容器");
-  if (caps.hazardContainer !== null) containerTypes.push("危害物质容器");
-  
-  return containerTypes.length > 0 ? containerTypes : ["无容器"];
-}
-
 ItemEvents.rightClicked("kubejs:time_twister", event => {
   if (!event.player.isFake() && event.player.isSteppingCarefully()) {
     //加速机器
     var recipeLogic = getEyePositionRecipeLogic(event.level, event.player)
-    var workable = getEyePosituinWorkable(event.level, event.player)
 
-    {
-var pos = getEyePositionPos(event.level, event.player);
-    
-    try {
-      var caps = getAllCapabilities(event.level, pos);
-      var machineType = getMachineType(event.level, pos);
-      var containerInfo = getContainerInfo(event.level, pos);
-      
-      console.log("=== 机器信息 ===");
-      console.log("机器类型: " + machineType);
-      console.log("容器类型: " + containerInfo.join(", "));
-      console.log("=== 能力详情 ===");
-      console.log("配方逻辑: " + (caps.recipeLogic !== null ? "有" : "无"));
-      console.log("工作能力: " + (caps.workable !== null ? "有" : "无"));
-      console.log("物品容器: " + (caps.itemHandler !== null ? "有" : "无"));
-      console.log("流体容器: " + (caps.fluidHandler !== null ? "有" : "无"));
-      console.log("能量容器: " + (caps.energyContainer !== null ? "有" : "无"));
-      console.log("FE能量: " + (caps.forgeEnergy !== null ? "有" : "无"));
-      
-      // 根据机器类型执行不同的加速逻辑
-      if (caps.recipeLogic !== null) {
-        console.log("正在加速配方机器...");
-        // 执行配方机器加速逻辑
-      } else if (caps.workable !== null) {
-        console.log("正在加速工作机器...");
-        // 执行工作机器加速逻辑
-      } else if (containerInfo.length > 0 && containerInfo[0] !== "无容器") {
-        console.log("这是存储容器，无法加速");
-      } else {
-        console.log("这不是可加速的机器");
-      }
-      
-    } catch (e) {
-      console.log("检查机器时出错: " + e);
-    }
-    }
     if (recipeLogic != null && recipeLogic.isWorking())
     {
       if (event.player.isCreative()) {
@@ -336,20 +198,24 @@ var pos = getEyePositionPos(event.level, event.player);
           let newSpeed = Math.min(currentSpeed + speedIncrease, maxSpeed)
           if (event.player.isCreative()) {
             nbt.rotorSpeed = newSpeed
+            blockEntity.load(nbt)
             blockEntity.setChanged()
+            event.level.sendBlockUpdated(pos, blockEntity.getBlockState(), blockEntity.getBlockState(), 3)
             event.player.setStatusMessage("🌀 当前转速: "+ newSpeed + " RPM")
+            return
           }
-          // 使用同一套消耗策略 - 所有转子支架都需要消耗
+          
           if (!consume(event.player, event.hand, true)) {
             return
           }
           
-          // 所有转子支架都需要电池或幸运效果
           if (event.player.getEffect("minecraft:luck")) {
             // 有幸运效果：直接消耗
             consume(event.player, event.hand, false)
             nbt.rotorSpeed = newSpeed
+            blockEntity.load(nbt)
             blockEntity.setChanged()
+            event.level.sendBlockUpdated(pos, blockEntity.getBlockState(), blockEntity.getBlockState(), 3)
             event.player.setStatusMessage("🌀 当前转速: "+ newSpeed + " RPM")
           } else {
             // 没有幸运效果：需要电池消耗
@@ -358,7 +224,9 @@ var pos = getEyePositionPos(event.level, event.player);
             if (eu > 0 && consumeBattery(event.player, eu)) {
               consume(event.player, event.hand, false)
               nbt.rotorSpeed = newSpeed
+              blockEntity.load(nbt)
               blockEntity.setChanged()
+              event.level.sendBlockUpdated(pos, blockEntity.getBlockState(), blockEntity.getBlockState(), 3)
               event.player.setStatusMessage("🌀 当前转速: "+  newSpeed + " RPM")
             }
           }
