@@ -6,6 +6,33 @@ const $ClipContext = Java.loadClass("net.minecraft.world.level.ClipContext")
 const TIME_TWISTER_COOLDOWN = 20
 const TIME_TWISTER_MAX_TIME = 80
 
+function getPowerSubstationRaw(level, pos) {
+    var energyInfoProvider = $GTCapabilityHelper.getEnergyInfoProvider(level, pos, null);
+    if (!energyInfoProvider) return null;
+    
+    try {
+        var energyInfo = energyInfoProvider.getEnergyInfo();
+        if (!energyInfo) return null;
+        
+        var capacityNum = parseFloat(energyInfo.capacity().toString());
+        var storedNum = parseFloat(energyInfo.stored().toString());
+        var fillRatio = storedNum / capacityNum;
+
+        return {
+            machineType: energyInfoProvider.getClass().getSimpleName(),
+            stored: storedNum,
+            capacity: capacityNum,
+            fillRatio: fillRatio
+        };
+    } catch (e) {
+        return null;
+    }
+}
+
+// 示例调用
+//console.log(getPowerSubstationRaw(Utils.server.getLevel("minecraft:overworld"), new BlockPos(-8180, 65, -8228)));
+
+
 // 获取最大转速的函数
 function getMaxRPM(machineId) {
   const rpmMap = {
