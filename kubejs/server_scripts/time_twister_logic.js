@@ -37,7 +37,7 @@ function getPowerSubstationRaw(level, pos) {
 function getMaxRPM(machineId) {
   const rpmMap = {
     "gtceu:hv_rotor_holder": 5000,
-    "gtceu:ev_rotor_holder": 6000, 
+    "gtceu:ev_rotor_holder": 6000,
     "gtceu:iv_rotor_holder": 7000,
     "gtceu:luv_rotor_holder": 8000,
     "gtceu:zpm_rotor_holder": 9000,
@@ -64,7 +64,7 @@ function consume(player, hand, simulate) {
     player.setStatusMessage("Huyil最棒了!! [无限次数]")
     return true
   }
-  
+
   player.persistentData.putInt("tt_count", (tt - 1))
   if (tt > 0) {
     setMessageTt(player,tt - 1)
@@ -139,21 +139,85 @@ function getEyePositionRecipeLogic(level, player) {
   return $GTCapabilityHelper.getRecipeLogic(level, getEyePositionPos(level, player), null)
 }
 
-function getEyePosituinWorkable(level, player) {
+function getEyePositionWorkable(level, player) {
   return $GTCapabilityHelper.getWorkable(level, getEyePositionPos(level, player), null)
+}
+
+function getEyePositionEnergyInfoProvider(level, player) {
+  return $GTCapabilityHelper.getEnergyInfoProvider(level, getEyePositionPos(level, player), null)
+}
+function getEyePositionEnergyContainer(level, player) {
+  return $GTCapabilityHelper.getEnergyContainer(level, getEyePositionPos(level, player), null)
 }
 
 ItemEvents.rightClicked("kubejs:time_twister", event => {
   if (!event.player.isFake() && event.player.isSteppingCarefully()) {
     //加速机器
     var recipeLogic = getEyePositionRecipeLogic(event.level, event.player)
-
     if (recipeLogic != null && recipeLogic.isWorking())
     {
       if (event.player.isCreative()) {
         recipeLogic.setProgress(recipeLogic.getDuration() + 1)
       } else {
-        if ($RecipeHelper.getInputEUt(recipeLogic.getLastRecipe()) > 0) {
+        let lastRecipe = recipeLogic.getLastRecipe()
+        let inputEUt = lastRecipe ? $RecipeHelper.getInputEUt(lastRecipe) : null
+        if(!inputEUt)
+        {
+          var energyInfoProvider = getEyePositionEnergyInfoProvider(event.level, event.player);
+          var pos = getEyePositionPos(event.level,event. player)
+          var item = event.item;
+          if (energyInfoProvider)
+          {
+            if(energyInfoProvider.getClass().getSimpleName() === "PowerSubstationMachine")
+            {
+                if (item) {
+                    if (!item.nbt) item.setNBT({});   // 确保 NBT 存在
+                    item.nbt.BlockPos = [pos.getX(), pos.getY(), pos.getZ()]; // 写入三位数组
+
+                    event.player.tell("已在物品上记录方块 " + energyInfoProvider.getClass().getSimpleName() +" \n坐标: [" + pos.getX() + ", " + pos.getY() + ", " + pos.getZ() + "]");
+                }
+            }
+
+          // 获取存储的 BlockPos
+          var posArr = item.nbt.BlockPos;
+          if (!posArr || posArr.length !== 3) {
+              event.player.tell("物品未记录方块坐标");
+              return;
+          }
+
+          // 调用能量读取
+          var data = getPowerSubstationRaw(event.level, new BlockPos(posArr[0], posArr[1], posArr[2]));
+          if (!data) {
+              event.player.tell("无法读取机器能量信息");
+              return;
+          }
+          // 计算比例
+          var ratioBig = data.stored.multiply($BigInteger("100000")).divide($BigInteger("9223372036854775807"));
+          var ratio = ratioBig.longValue() / 100000.0;
+          if (ratio > 1) ratio = 1;
+          if (ratio < 0) ratio = 0;
+
+          // ✅ 获取最大耐久
+          var maxDamage = 1024;
+          try {
+              maxDamage = item.getItem().getMaxDamage();
+          } catch (e) {
+              maxDamage = 1024;
+          }
+
+          // 更新耐久
+          var newDamage = Math.floor(maxDamage * (1 - ratio));
+          if (newDamage < 0) newDamage = 0;
+          if (newDamage > maxDamage) newDamage = maxDamage;
+          item.nbt.Damage = (newDamage);
+
+          var percent = (ratio * 100).toFixed(2);
+          event.player.tell(`机器电量: ${data.stored} (${percent}%)`);
+          event.player.tell(`机器容量: ${data.capacity}`);
+          event.player.tell(`进度条更新为 ${newDamage}/${maxDamage}`);
+          }
+        }
+        else if (inputEUt > 0) {
           let reducedDuration = recipeLogic.getDuration() / 4
 
           if (reducedDuration < 40) {
@@ -164,7 +228,7 @@ ItemEvents.rightClicked("kubejs:time_twister", event => {
           if (!consume(event.player, event.hand, true)) {
             return
           }
-          
+
           if (recipeLogic.getMachine().self().getTier() <= 2) {
             consume(event.player, event.hand, false)
             recipeLogic.setProgress(recipeLogic.getProgress() + reducedDuration)
@@ -175,7 +239,7 @@ ItemEvents.rightClicked("kubejs:time_twister", event => {
             recipeLogic.setProgress(recipeLogic.getProgress() + reducedDuration)
             return
           }
-          
+
           let eu = (reducedDuration * $RecipeHelper.getInputEUt(recipeLogic.getLastRecipe()) + 4 ) / 5
           if (eu > 0 && consumeBattery(event.player, eu)) {
             consume(event.player, event.hand, false)
@@ -185,24 +249,24 @@ ItemEvents.rightClicked("kubejs:time_twister", event => {
       }
     }else{
       // 1. 获取方块位置和方块对象
+      console.log("rotor_holder")
       let pos = getEyePositionPos(event.level, event.player)
       let block = event.level.getBlock(pos)
-      
+
       // --- 针对转子支架 (rotor_holder) 的加速逻辑 ---
       if (block.id && block.id.includes('rotor_holder')) {
-        
         // KubeJS 推荐的方式：使用 block.entityData 获取可修改的 NBT
-        let nbt = block.entityData 
+        let nbt = block.entityData
         // 获取 BlockEntity 实例，用于 setChanged() 和 sendBlockUpdated()
-        let blockEntity = event.level.getBlockEntity(pos) 
+        let blockEntity = event.level.getBlockEntity(pos)
 
         if (!nbt || !blockEntity) {
           return
         }
-        
+
         // 检查物品栏是否存在转子 (根据你提供的 NBT 结构)
         let foundItems = false
-        
+
         // 路径1: inventory.storage.Items (基于你提供的复杂 NBT 结构)
         if (nbt.inventory && nbt.inventory.storage && nbt.inventory.storage.Items) {
           let items = nbt.inventory.storage.Items
@@ -210,16 +274,16 @@ ItemEvents.rightClicked("kubejs:time_twister", event => {
             foundItems = true
           }
         }
-        
+
         if (!foundItems) {
           event.player.setStatusMessage("未放入转子")
           return
         }
-        
+
         // 获取当前速度和最大速度
         let currentSpeed = nbt.rotorSpeed || 0
         let maxSpeed = getMaxRPM(block.id)
-        
+
         if (currentSpeed < maxSpeed) {
           let speedIncrease = 1000 // 每次增加 1000 RPM
           let newSpeed = Math.min(currentSpeed + speedIncrease, maxSpeed)
@@ -231,11 +295,11 @@ ItemEvents.rightClicked("kubejs:time_twister", event => {
             event.player.setStatusMessage("🌀 当前转速: "+ newSpeed + " RPM")
             return
           }
-          
+
           if (!consume(event.player, event.hand, true)) {
             return
           }
-          
+
           if (event.player.getEffect("minecraft:luck")) {
             // 有幸运效果：直接消耗
             consume(event.player, event.hand, false)
@@ -274,7 +338,7 @@ EntityEvents.hurt(event => {
 
     const playerName = entity.getName().getString();
     const now = Date.now();
-  
+
     // 冷却 2 秒判断
     if (lightningCooldowns[playerName] && now - lightningCooldowns[playerName] <= 2000) {
         // 冷却期间免疫伤害
@@ -336,3 +400,68 @@ PlayerEvents.tick(event => {
     }
   }
 })
+
+
+
+/////TEST
+
+
+function getAllCapabilities(level, pos) {
+  var capabilities = {};
+
+  // 只尝试我们知道可用的方法，其他的用 try-catch 包装
+  try { capabilities.recipeLogic = $GTCapabilityHelper.getRecipeLogic(level, pos, null); } catch (e) { capabilities.recipeLogic = null; }
+  try { capabilities.workable = $GTCapabilityHelper.getWorkable(level, pos, null); } catch (e) { capabilities.workable = null; }
+
+  // 其他的方法可能不可用，但我们还是尝试一下
+  try { capabilities.energyContainer = $GTCapabilityHelper.getEnergyContainer(level, pos, null); } catch (e) { capabilities.energyContainer = null; }
+  try { capabilities.coverable = $GTCapabilityHelper.getCoverable(level, pos, null); } catch (e) { capabilities.coverable = null; }
+  try { capabilities.toolable = $GTCapabilityHelper.getToolable(level, pos, null); } catch (e) { capabilities.toolable = null; }
+  try { capabilities.controllable = $GTCapabilityHelper.getControllable(level, pos, null); } catch (e) { capabilities.controllable = null; }
+  try { capabilities.forgeEnergy = $GTCapabilityHelper.getForgeEnergy(level, pos, null); } catch (e) { capabilities.forgeEnergy = null; }
+  try { capabilities.cleanroomReceiver = $GTCapabilityHelper.getCleanroomReceiver(level, pos, null); } catch (e) { capabilities.cleanroomReceiver = null; }
+  try { capabilities.maintenanceMachine = $GTCapabilityHelper.getMaintenanceMachine(level, pos, null); } catch (e) { capabilities.maintenanceMachine = null; }
+  try { capabilities.laser = $GTCapabilityHelper.getLaser(level, pos, null); } catch (e) { capabilities.laser = null; }
+
+  // 这些方法可能不存在，但我们还是尝试
+  try { capabilities.itemHandler = $GTCapabilityHelper.getItemHandler(level, pos, null); } catch (e) { capabilities.itemHandler = null; }
+  try { capabilities.fluidHandler = $GTCapabilityHelper.getFluidHandler(level, pos, null); } catch (e) { capabilities.fluidHandler = null; }
+  try { capabilities.energyInfoProvider = $GTCapabilityHelper.getEnergyInfoProvider(level, pos, null); } catch (e) { capabilities.energyInfoProvider = null; }
+  try { capabilities.opticalComputationProvider = $GTCapabilityHelper.getOpticalComputationProvider(level, pos, null); } catch (e) { capabilities.opticalComputationProvider = null; }
+  try { capabilities.dataAccess = $GTCapabilityHelper.getDataAccess(level, pos, null); } catch (e) { capabilities.dataAccess = null; }
+  try { capabilities.hazardContainer = $GTCapabilityHelper.getHazardContainer(level, pos, null); } catch (e) { capabilities.hazardContainer = null; }
+  try { capabilities.monitorComponent = $GTCapabilityHelper.getMonitorComponent(level, pos, null); } catch (e) { capabilities.monitorComponent = null; }
+
+  return capabilities;
+}
+
+function areAllCapabilitiesNull(level, pos) {
+  var caps = getAllCapabilities(level, pos);
+
+  // 检查所有能力是否都为null
+  for (var key in caps) {
+    if (caps[key] !== null) {
+      return false; // 至少有一个能力不为null
+    }
+  }
+  return true; // 所有能力都为null
+}
+
+function getPowerSubstationRaw(level, pos) {
+    var energyInfoProvider = $GTCapabilityHelper.getEnergyInfoProvider(level, pos, null);
+    if (!energyInfoProvider) {console.log("energyInfoProvider null");return null;}
+    try {
+        var energyInfo = energyInfoProvider.getEnergyInfo();
+        if (!energyInfo) {console.log("energyInfo null");return null;}
+
+        var storedBig = energyInfo.stored();      // 保留 BigInteger
+        var capacityBig = energyInfo.capacity();  // 保留 BigInteger
+        return {
+            machineType: energyInfoProvider.getClass().getSimpleName(),
+            stored: storedBig,
+            capacity: capacityBig,
+        };
+    } catch (e) {
+        return null;
+    }
+}
